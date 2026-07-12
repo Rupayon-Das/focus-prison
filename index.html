@@ -200,11 +200,7 @@
       const webview = tabObj.webview;
       webview.addEventListener('permissionrequest', (e) => { if (e.permission === 'popups') e.request.allow(); });
       webview.addEventListener('dom-ready', () => {
-        webview.insertCSS(`
-          body, div, section, main, header, footer, textarea, button, input, span, a { opacity: 1 !important; pointer-events: auto !important; filter: none !important; }
-          .ant-modal-root, .ant-modal-mask, .ant-modal-wrap, .ds-tips-container { display: none !important; }
-          textarea[disabled], button[disabled] { pointer-events: auto !important; opacity: 1 !important; color: black !important; background-color: #313244 !important; }
-        `);
+        // Let the websites naturally render their own settings, dialogs, and menus
       });
 
       webview.addEventListener('will-navigate', (e) => {
