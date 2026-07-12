@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Focus Prison</title>
+  <style>
+    body { margin: 0; padding: 0; background: #1e1e2e; color: white; font-family: sans-serif; overflow: hidden; height: 100vh; display: flex; flex-direction: column; }
+    #setup { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; gap: 15px; padding: 20px; box-sizing: border-box; }
+    input { width: 80%; max-width: 600px; padding: 10px; font-size: 16px; background: #313244; color: white; border: 1px solid #45475a; border-radius: 5px; }
+    button { padding: 15px 40px; font-size: 18px; background: #f38ba8; color: black; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
+    .hint { font-size: 12px; color: #a6adc8; max-width: 600px; text-align: center; line-height: 1.4; }
+    #lockdown { display: none; height: 100vh; flex-direction: column; }
+    #timerBar { height: 40px; background: #f38ba8; color: black; font-weight: bold; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+    #tabBar { display: flex; align-items: center; background: #181825; padding: 5px 5px 0 5px; gap: 5px; flex-shrink: 0; }
+    .tab-button { background: #313244; color: #cdd6f4; border: none; padding: 8px 15px; border-radius: 5px 5px 0 0; cursor: pointer; font-size: 14px; display: flex; align-items: center; gap: 8px; max-width: 200px; }
+    .tab-button.active { background: #1e1e2e; }
+    .tab-button span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .tab-close { background: transparent; border: none; color: #a6adc8; cursor: pointer; font-size: 16px; padding: 0; }
+    .tab-close:hover { color: #f38ba8; }
+    #newTabBtn { background: transparent; color: #cdd6f4; border: none; font-size: 20px; cursor: pointer; padding: 5px 10px; }
+    #navBar { height: 40px; background: #181825; display: flex; align-items: center; padding: 0 15px; gap: 15px; flex-shrink: 0; border-bottom: 1px solid #313244; }
+    #navBar button { background: #313244; color: #cdd6f4; border: none; padding: 5px 15px; border-radius: 5px; cursor: pointer; font-size: 14px; }
+    #navBar button:hover { background: #45475a; }
+    #currentUrl { color: #a6adc8; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #webviewContainer { flex-grow: 1; position: relative; background: #11111b; overflow: hidden; }
+    .browser-view { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; z-index: 1; pointer-events: none; background-color: #11111b; }
+    .browser-view.active { z-index: 2; pointer-events: all; }
+    #timeUp { display: none; flex-direction: column; align-items: center; justify-content: center; height: 100vh; text-align: center; z-index: 9999; background: #1e1e2e; }
+    #timeUp h1 { font-size: 5em; color: #a6e3a1; margin: 0; }
+  </style>
+</head>
+<body>
+  <div id="setup">
+    <h1>🔒 Focus Prison</h1>
+    <p>Enter EXACT URLs (comma separated). YouTube playlists will be strictly enforced.</p>
+    <input type="text" id="urlInput" placeholder="https://www.youtube.com/playlist?list=PLxxxxxx, https://chat.deepseek.com, https://mail.google.com">
+    <input type="number" id="timeInput" placeholder="Minutes (e.g., 60)" min="1">
+    <button id="startBtn">Initiate Lockdown</button>
+  </div>
+  <div id="lockdown">
+    <div id="timerBar">LOCKDOWN ACTIVE: <span id="timer" style="margin-left: 15px;">--:--</span> remaining</div>
+    <div id="tabBar"><div id="tabButtons" style="display: flex; gap: 5px;"></div><button id="newTabBtn">+</button></div>
+    <div id="navBar"><button id="backBtn">← Back</button><button id="fwdBtn">Forward →</button><button id="reloadBtn">↻ Reload</button><span id="currentUrl"></span></div>
+    <div id="webviewContainer"></div>
+  </div>
+  <div id="timeUp">
+    <h1>TIME IS UP!</h1>
+    <p style="font-size: 2em; margin-top: 20px;">You are now free. Closing application...</p>
+  </div>
+
+  <script>
+    const { ipcRenderer } = require('electron');
+    const path = require('path');
+
+    const setupDiv = document.getElementById('setup');
+    const lockdownDiv = document.getElementById('lockdown');
+    const timeUpDiv = document.getElementById('timeUp');
+    const startBtn = document.getElementById('startBtn');
+    const urlInput = document.getElementById('urlInput');
+    const timeInput = document.getElementById('timeInput');
+    const timerSpan = document.getElementById('timer');
+    const tabButtonsDiv = document.getElementById('tabButtons');
+    const newTabBtn = document.getElementById('newTabBtn');
+    const webviewContainer = document.getElementById('webviewContainer');
+    const currentUrlSpan = document.getElementById('currentUrl');
+    const backBtn = document.getElementById('backBtn');
+    const fwdBtn = document.getElementById('fwdBtn');
+    const reloadBtn = document.getElementById('reloadBtn');
+
+    let allowedUrls = [];
+    let endTime = 0; let interval; let tabCounter = 0; let activeTab = null; let tabs = [];
+
+    const PARTITION = 'persist:ddg_auth';
+
+    ipcRenderer.on('google-login-closed', () => { if (activeTab && activeTab.webview) activeTab.webview.reload(); });
+
+    function formatUrl(u) {
+      u = u.trim();
+      if (!u.startsWith('http://') && !u.startsWith('https://')) u = 'https://' + u;
+      try { let parsed = new URL(u); if (parsed.hostname.split('.').length <= 2) { parsed.hostname = 'www.' + parsed.hostname; u = parsed.toString(); } } catch(e) {}
+      return u;
+    }
+
+    function getBaseDomain(hostname) {
+      const parts = hostname.split('.');
+      return parts.length > 2 ? parts.slice(-2).join('.') : hostname;
+    }
+
+    startBtn.addEventListener('click', () => {
+      let rawUrls = urlInput.value.split(',').map(u => u.trim()).filter(u => u !== '');
+      const minutes = parseInt(timeInput.value);
+      if (rawUrls.length === 0 || isNaN(minutes) || minutes < 1) { alert("You must provide valid URLs and at least 1 minute."); return; }
+      allowedUrls = rawUrls.map(formatUrl);
+      endTime = Date.now() + (minutes * 60 * 1000);
+      ipcRenderer.send('lock-window');
+      setupDiv.style.display = 'none'; lockdownDiv.style.display = 'flex';
+      createTab(allowedUrls[0]);
+      updateTimer(); interval = setInterval(updateTimer, 1000);
+    });
+
+    newTabBtn.addEventListener('click', () => createTab(null));
+
+    function createTab(url) {
+      const id = tabCounter++;
+      const tabObj = { id: id, lastGoodUrl: url, isEnforcing: false };
+
+      const tabBtn = document.createElement('button');
+      tabBtn.className = 'tab-button'; tabBtn.dataset.id = id;
+      tabBtn.innerHTML = `<span>${url ? 'Loading...' : 'New Tab'}</span> <button class="tab-close">×</button>`;
+      tabBtn.querySelector('.tab-close').addEventListener('click', (e) => { e.stopPropagation(); closeTab(id); });
+      tabBtn.addEventListener('click', () => switchToTab(id));
+      tabButtonsDiv.appendChild(tabBtn); tabObj.tabBtn = tabBtn;
+
+      // 🚀 WINDOWS PATH FIX: Normalize paths to use forward slashes for the file:// scheme
+      const rawPath = path.join(__dirname, 'preload.js');
+      const normalizedPreloadPath = 'file://' + rawPath.replace(/\\/g, '/');
+
+      const webview = document.createElement('webview');
+      webview.className = 'browser-view';
+      webview.allowpopups = true;
+      webview.setAttribute('partition', PARTITION);
+      webview.setAttribute('webpreferences', 'nodeIntegration=no, contextIsolation=yes, webSecurity=true');
+      webview.setAttribute('preload', normalizedPreloadPath);
+
+      webviewContainer.appendChild(webview);
+      tabObj.webview = webview;
+      attachListeners(tabObj);
+      tabs.push(tabObj);
+      switchToTab(id);
+
+      if (url) webview.src = url; else showStartPage(tabObj);
+    }
+
+    function closeTab(id) {
+      if (tabs.length <= 1) { alert("You cannot close the last tab."); return; }
+      const index = tabs.findIndex(t => t.id === id);
+      if (index === -1) return;
+      tabs[index].tabBtn.remove(); tabs[index].webview.remove();
+      tabs.splice(index, 1);
+      if (activeTab && activeTab.id === id) switchToTab(tabs[0].id);
+    }
+
+    function switchToTab(id) {
+      const tabObj = tabs.find(t => t.id === id);
+      if (!tabObj) return;
+      activeTab = tabObj;
+      document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+      document.querySelectorAll('.browser-view').forEach(wv => wv.classList.remove('active'));
+      tabObj.tabBtn.classList.add('active'); tabObj.webview.classList.add('active');
+      updateNavBar();
+    }
+
+    function showStartPage(tabObj) {
+      const startHtml = `
+        <body style="background: #1e1e2e; color: white; font-family: sans-serif; margin: 0; height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px;">
+          <h2>Where do you want to go?</h2>
+          <div style="display: flex; flex-direction: column; gap: 15px; align-items: center;">
+            ${allowedUrls.map(u => `<a style="background: #313244; color: #cdd6f4; padding: 15px 30px; border-radius: 8px; font-size: 18px; text-decoration: none; cursor: pointer; border: 1px solid #45475a; width: 300px; text-align: center;" href="${u}">${u}</a>`).join('')}
+          </div>
+        </body>`;
+      tabObj.webview.src = 'data:text/html;charset=utf-8,' + encodeURIComponent(startHtml);
+    }
+
+    backBtn.addEventListener('click', () => { if (activeTab && activeTab.webview.canGoBack()) activeTab.webview.goBack(); });
+    fwdBtn.addEventListener('click', () => { if (activeTab && activeTab.webview.canGoForward()) activeTab.webview.goForward(); });
+    reloadBtn.addEventListener('click', () => { if (activeTab) activeTab.webview.reload(); });
+
+    function updateNavBar() { if (activeTab) currentUrlSpan.innerText = activeTab.webview.src.startsWith('data:') ? 'Start Page' : activeTab.webview.src; }
+
+    function updateTimer() {
+      const remaining = endTime - Date.now();
+      if (remaining <= 0) {
+        clearInterval(interval); timerSpan.innerText = "00:00";
+        lockdownDiv.style.display = 'none'; timeUpDiv.style.display = 'flex';
+        ipcRenderer.send('unlock-window'); setTimeout(() => window.close(), 4000); return;
+      }
+      const mins = Math.floor(remaining / 60000); const secs = Math.floor((remaining % 60000) / 1000);
+      timerSpan.innerText = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+
+    function isUrlAllowed(rawUrl) {
+      if (!rawUrl || rawUrl === 'about:blank' || rawUrl.startsWith('data:text/html')) return true;
+      try {
+        const target = new URL(rawUrl); const host = target.hostname;
+        if (host.endsWith('.google.com') || host.endsWith('.googleapis.com') || host.endsWith('.gstatic.com') || host === 'accounts.google.com' || host === 'mail.google.com') return true;
+        return allowedUrls.some(allowedStr => {
+          const allowed = new URL(allowedStr);
+          if (getBaseDomain(host) !== getBaseDomain(allowed.hostname)) return false;
+          if (allowed.hostname.includes('youtube.com')) {
+            const playlistId = allowed.searchParams.get('list');
+            if (playlistId) return (target.pathname === '/playlist' || target.pathname === '/watch') && target.searchParams.get('list') === playlistId;
+          }
+          if (allowed.pathname !== '/' && !target.pathname.startsWith(allowed.pathname)) return false;
+          return true;
+        });
+      } catch (e) { return false; }
+    }
+
+    function attachListeners(tabObj) {
+      const webview = tabObj.webview;
+      webview.addEventListener('permissionrequest', (e) => { if (e.permission === 'popups') e.request.allow(); });
+      webview.addEventListener('dom-ready', () => {
+        webview.insertCSS(`
+          body, div, section, main, header, footer, textarea, button, input, span, a { opacity: 1 !important; pointer-events: auto !important; filter: none !important; }
+          .ant-modal-root, .ant-modal-mask, .ant-modal-wrap, .ds-tips-container { display: none !important; }
+          textarea[disabled], button[disabled] { pointer-events: auto !important; opacity: 1 !important; color: black !important; background-color: #313244 !important; }
+        `);
+      });
+
+      webview.addEventListener('will-navigate', (e) => {
+        if (tabObj.isEnforcing) return;
+        if (e.isMainFrame) {
+          const url = e.url;
+          if (url.includes('accounts.google.com') && !url.includes('logout')) {
+            e.preventDefault(); ipcRenderer.send('open-manual-auth', url); return;
+          }
+          if (tabObj === activeTab) currentUrlSpan.innerText = e.url;
+          if (url.includes('google.com') || url.includes('gstatic.com') || url.includes('googleapis.com')) {
+            tabObj.lastGoodUrl = url; tabObj.tabBtn.querySelector('span').innerText = url.replace('https://www.', '').split('/')[0]; return;
+          }
+          if (!isUrlAllowed(url)) { e.preventDefault(); enforcePrison(tabObj); } 
+          else { tabObj.lastGoodUrl = url; tabObj.tabBtn.querySelector('span').innerText = url.replace('https://www.', '').split('/')[0]; }
+        }
+      });
+
+      webview.addEventListener('did-navigate-in-page', (e) => {
+        if (tabObj.isEnforcing) return;
+        if (e.isMainFrame) {
+          if (tabObj === activeTab) currentUrlSpan.innerText = e.url;
+          if (!isUrlAllowed(e.url)) enforcePrison(tabObj); else tabObj.lastGoodUrl = e.url;
+        }
+      });
+
+      webview.addEventListener('new-window', (e) => {
+        const url = e.url;
+        if (url.includes('accounts.google.com') && (url.includes('oauth2') || url.includes('client_id') || url.includes('gsi'))) return; 
+        e.preventDefault();
+        if (url.includes('accounts.google.com/signin') || url.includes('accounts.google.com/ServiceLogin')) {
+          ipcRenderer.send('open-manual-auth', url); return;
+        }
+        if (url.includes('google.com') || url.includes('gstatic.com') || url.includes('googleapis.com')) {
+          webview.loadURL(url); webview.focus(); return;
+        }
+        if (isUrlAllowed(url)) createTab(url);
+      });
+
+      webview.addEventListener('did-fail-load', (e) => {
+        if (e.errorCode === -3) return;
+        webview.executeJavaScript(`document.body.innerHTML = '<div style="color:#f38ba8;font-family:sans-serif;padding:20px;text-align:center;"><h3>Error loading page</h3><p>${e.errorDescription} (${e.errorCode})</p></div>';`).catch(()=>{});
+      });
+    }
+
+    function enforcePrison(tabObj) {
+      if (tabObj.isEnforcing) return;
+      tabObj.isEnforcing = true;
+      if (tabObj.lastGoodUrl && !tabObj.lastGoodUrl.startsWith('data:')) tabObj.webview.loadURL(tabObj.lastGoodUrl);
+      else showStartPage(tabObj);
+      setTimeout(() => { tabObj.isEnforcing = false; }, 1500);
+    }
+  </script>
+</body>
+</html>
