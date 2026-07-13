@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, session } = require('electron');
+const { app, BrowserWindow, ipcMain, session, Notification } = require('electron');
 const path = require('path');
 
 // 🚀 LINUX YOUTUBE FIX: Disables the buggy graphics acceleration layer
@@ -129,3 +129,10 @@ app.on('window-focus-changed', (event, focusedWindow) => {
 ipcMain.on('lock-window', () => { mainWindow.isLockedDown = true; mainWindow.setAlwaysOnTop(true, 'screen-saver'); mainWindow.focus(); });
 ipcMain.on('unlock-window', () => { mainWindow.isLockedDown = false; mainWindow.setAlwaysOnTop(false); });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+
+// Native desktop notification trigger
+ipcMain.on('notify-battery', (event, { title, body }) => {
+  if (Notification.isSupported()) {
+    new Notification({ title, body }).show();
+  }
+});
