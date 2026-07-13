@@ -1,7 +1,7 @@
 const { app, BrowserWindow, ipcMain, session, Notification } = require('electron');
 const path = require('path');
 
-// 🚀 LINUX PERFORMANCE PATCH: Bypasses faulty hardware acceleration layers
+// LINUX PERFORMANCE PATCH: Bypasses faulty hardware acceleration layers to fix YouTube video borders and lag
 if (process.platform === 'linux') {
   app.disableHardwareAcceleration();
 }
@@ -19,6 +19,21 @@ let mainWindow;
 let authWindow = null;
 
 function applyTrafficRouting(sess) {
+  // AD-BLOCK LAYER 1: EXTERNAL NETWORK FIREWALL
+  const adFilterPatterns = [
+    '*://*.doubleclick.net/*',
+    '*://*.googleadservices.com/*',
+    '*://*.googlesyndication.com/*',
+    '*://*.pagead2.googlesyndication.com/*',
+    '*://*.adservice.google.com/*',
+    '*://*.amazon-adsystem.com/*'
+  ];
+  
+  sess.webRequest.onBeforeRequest({ urls: adFilterPatterns }, (details, callback) => {
+    callback({ cancel: true });
+  });
+
+  // IDENTITY ROUTING PIPELINE
   sess.webRequest.onBeforeSendHeaders((details, callback) => {
     const headers = details.requestHeaders;
     const url = details.url.toLowerCase();
@@ -56,17 +71,17 @@ function createWindow() {
       webviewTag: true,
       spellcheck: false,
       webSecurity: false,
+      backgroundThrottling: false // 🚀 CRITICAL FOR POMODORO: Keeps timers running at full speed when app minimizes
     }
   });
 
   mainWindow.loadFile('index.html');
   
-  // Protect window from closing during active lockdown
   mainWindow.on('close', (e) => { 
     if (mainWindow.isLockedDown) e.preventDefault(); 
   });
 
-  // 🚀 FIXED: This listener is now safely inside createWindow() where mainWindow exists!
+  // LINUX FULLSCREEN EXIT FIX
   mainWindow.on('leave-html-full-screen', () => {
     if (mainWindow.isLockedDown) {
       setTimeout(() => {
@@ -140,11 +155,23 @@ ipcMain.on('open-manual-auth', (event, url) => {
   });
 });
 
-// Strict Window Enforcement
+// Strict Window Enforcement (Lockdown Mode)
 ipcMain.on('lock-window', () => { 
   mainWindow.isLockedDown = true; 
+  if (mainWindow.isMinimized()) mainWindow.restore(); // Pull back up out of the taskbar
+  mainWindow.setKiosk(true); 
+  mainWindow.setFullScreen(true);
   mainWindow.setAlwaysOnTop(true, 'screen-saver'); 
   mainWindow.focus(); 
+});
+
+// 🚀 NEW: Pomodoro Break State Trigger
+ipcMain.on('start-break', () => {
+  mainWindow.isLockedDown = false; // Allow app to be closed during break if finished
+  mainWindow.setKiosk(false); 
+  mainWindow.setFullScreen(false);
+  mainWindow.setAlwaysOnTop(false); 
+  mainWindow.minimize(); // Send window down to the tray so they can switch OS tabs freely
 });
 
 ipcMain.on('unlock-window', () => { 
@@ -159,7 +186,6 @@ ipcMain.on('notify-battery', (event, { title, body }) => {
   }
 });
 
-// App Shutdown Handling
 app.on('window-all-closed', () => { 
   if (process.platform !== 'darwin') app.quit(); 
 });
