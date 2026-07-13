@@ -9,7 +9,7 @@
 * 🚫 **Strict Lockdown** | Boots directly into full-screen kiosk mode, overriding standard desktop exits.
 * 🛡️ **Intelligent Domain Filtering** | Actively blocks attempts to navigate to distracting websites and automatically routes you back to your study materials.
 * 📑 **Custom Dynamic Tabs** | Allows you to open multiple pre-approved work interfaces (e.g., your documentation, tutorial, and chat helper) concurrently.
-* 🔓 **Bypassed Google Authentication** | Utilizes a custom native isolation architecture that safely bypasses Google's strict *"insecure browser"* blocks, letting you sign into Gmail and DeepSeek natively using a DuckDuckGo mobile wrapper configuration.
+* 🔓 **Bypassed Google Authentication** | Utilizes a custom native isolation architecture that safely bypasses Google's strict *"insecure browser"* blocks, letting you sign into Gmail, Slack or any other websites natively using a DuckDuckGo mobile wrapper configuration which is not possible with stanred Google Chrome V8 engine
 * 💻 **Cross-Platform Compatibility** | Re-architected to normalize file pathways and window environments across Windows, macOS, and Linux.
 
 ---
