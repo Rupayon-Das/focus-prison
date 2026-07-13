@@ -163,13 +163,16 @@
       tabBtn.addEventListener('click', () => switchToTab(id));
       tabButtonsDiv.appendChild(tabBtn); tabObj.tabBtn = tabBtn;
 
-      // 🚀 WINDOWS PATH FIX: Normalize paths to use forward slashes for the file:// scheme
       const rawPath = path.join(__dirname, 'preload.js');
       const normalizedPreloadPath = 'file://' + rawPath.replace(/\\/g, '/');
 
       const webview = document.createElement('webview');
       webview.className = 'browser-view';
       webview.allowpopups = true;
+      
+      // 🚀 ADD THIS LINE: Allows Chromium to scale videos inside the container cleanly
+      webview.allowfullscreen = true; 
+      
       webview.setAttribute('partition', PARTITION);
       webview.setAttribute('webpreferences', 'nodeIntegration=no, contextIsolation=yes, webSecurity=true');
       webview.setAttribute('preload', normalizedPreloadPath);
