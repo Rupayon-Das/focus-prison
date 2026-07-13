@@ -38,7 +38,11 @@
     <button id="startBtn">Initiate Lockdown</button>
   </div>
   <div id="lockdown">
-    <div id="timerBar">LOCKDOWN ACTIVE: <span id="timer" style="margin-left: 15px;">--:--</span> remaining</div>
+    <div id="timerBar" style="position: relative;">
+  <span>LOCKDOWN ACTIVE: <span id="timer" style="margin-left: 15px;">--:--</span> remaining</span>
+  <!-- The live battery display target -->
+  <span id="batteryStatus" style="position: absolute; right: 20px; font-size: 16px; font-weight: normal;">🔋 --%</span>
+</div>
     <div id="tabBar"><div id="tabButtons" style="display: flex; gap: 5px;"></div><button id="newTabBtn">+</button></div>
     <div id="navBar"><button id="backBtn">← Back</button><button id="fwdBtn">Forward →</button><button id="reloadBtn">↻ Reload</button><span id="currentUrl"></span></div>
     <div id="webviewContainer"></div>
@@ -68,6 +72,54 @@
     const reloadBtn = document.getElementById('reloadBtn');
 
     let allowedUrls = [];
+    let lowBatteryNotified = false;
+    let fullBatteryNotified = false;
+
+    if (navigator.getBattery) {
+      navigator.getBattery().then(battery => {
+        function updateBatteryInfo() {
+          const percentage = Math.round(battery.level * 100);
+          const isCharging = battery.charging;
+          
+          // 1. Update the top bar text configuration
+          const statusText = isCharging ? `🔌 ${percentage}% (Charging)` : `🔋 ${percentage}%`;
+          document.getElementById('batteryStatus').innerText = statusText;
+
+          // 2. Low Battery Alert (Trigger at 15% or lower if unplugged)
+          if (battery.level <= 0.15 && !isCharging) {
+            if (!lowBatteryNotified) {
+              ipcRenderer.send('notify-battery', {
+                title: '🔋 Battery Running Low!',
+                body: `Your battery has dropped to ${percentage}%. Plug in your charger soon to avoid losing your study block progress.`
+              });
+              lowBatteryNotified = true;
+            }
+          } else if (battery.level > 0.20) {
+            lowBatteryNotified = false; // Reset threshold tracker when charging back up
+          }
+
+          // 3. Full Battery Alert (Trigger right when hitting 100% on the cable)
+          if (percentage === 100 && isCharging) {
+            if (!fullBatteryNotified) {
+              ipcRenderer.send('notify-battery', {
+                title: '🔌 Battery Fully Charged!',
+                body: 'Your battery is at 100%. You can safely unplug your charger now.'
+              });
+              fullBatteryNotified = true;
+            }
+          } else if (percentage < 100) {
+            fullBatteryNotified = false; // Reset tracker when unplugged or draining
+          }
+        }
+
+        // Initialize status displays immediately on boot
+        updateBatteryInfo();
+
+        // Listen for live power hardware updates asynchronously 
+        battery.addEventListener('levelchange', updateBatteryInfo);
+        battery.addEventListener('chargingchange', updateBatteryInfo);
+      });
+    }
     let endTime = 0; let interval; let tabCounter = 0; let activeTab = null; let tabs = [];
 
     const PARTITION = 'persist:ddg_auth';
