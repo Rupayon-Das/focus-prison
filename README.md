@@ -1,8 +1,5 @@
 # 🔒 Focus Prison
 
-<img width="1600" height="520" alt="image" src="https://github.com/user-attachments/assets/5952489d-429c-4a93-8682-3b096d80e71b" />
-
-
 > **Focus Prison** is a cross-platform desktop productivity engine built with Electron, designed to ruthlessly eliminate digital distractions. By combining a strict full-screen kiosk environment with an automated, focus-enforced Pomodoro workflow, it locks you out of rabbit holes and keeps you bound to your learning materials. ⏳
 
 ---
