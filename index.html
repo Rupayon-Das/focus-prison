@@ -7,10 +7,14 @@
     body { margin: 0; padding: 0; background: #1e1e2e; color: white; font-family: sans-serif; overflow: hidden; height: 100vh; display: flex; flex-direction: column; }
     #setup { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; gap: 15px; padding: 20px; box-sizing: border-box; }
     input { width: 80%; max-width: 600px; padding: 10px; font-size: 16px; background: #313244; color: white; border: 1px solid #45475a; border-radius: 5px; }
+    .time-container { display: flex; flex-direction: column; gap: 10px; width: 80%; max-width: 600px; }
+    .time-row { display: flex; align-items: center; gap: 15px; background: #252538; padding: 10px; border-radius: 6px; border: 1px solid #313244; }
+    .time-row label { font-size: 14px; font-weight: bold; min-width: 110px; color: #cdd6f4; }
+    .time-inputs { display: flex; gap: 10px; flex-grow: 1; }
+    .time-inputs input { width: 100%; padding: 8px; font-size: 14px; }
     button { padding: 15px 40px; font-size: 18px; background: #f38ba8; color: black; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
-    .hint { font-size: 12px; color: #a6adc8; max-width: 600px; text-align: center; line-height: 1.4; }
     #lockdown { display: none; height: 100vh; flex-direction: column; }
-    #timerBar { height: 40px; background: #f38ba8; color: black; font-weight: bold; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+    #timerBar { height: 40px; background: #f38ba8; color: black; font-weight: bold; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; transition: background 0.3s ease; }
     #tabBar { display: flex; align-items: center; background: #181825; padding: 5px 5px 0 5px; gap: 5px; flex-shrink: 0; }
     .tab-button { background: #313244; color: #cdd6f4; border: none; padding: 8px 15px; border-radius: 5px 5px 0 0; cursor: pointer; font-size: 14px; display: flex; align-items: center; gap: 8px; max-width: 200px; }
     .tab-button.active { background: #1e1e2e; }
@@ -33,20 +37,45 @@
   <div id="setup">
     <h1>🔒 Focus Prison</h1>
     <p>Enter EXACT URLs (comma separated). YouTube playlists will be strictly enforced.</p>
-    <input type="text" id="urlInput" placeholder="https://www.youtube.com/playlist?list=PLxxxxxx, https://chat.deepseek.com, https://mail.google.com">
-    <input type="number" id="timeInput" placeholder="Minutes (e.g., 60)" min="1">
+    <input type="text" id="urlInput" placeholder="https://www.youtube.com/playlist?list=PLxxxxxx, https://chat.deepseek.com">
+    
+    <div class="time-container">
+      <div class="time-row">
+        <label>⏳ Study Block:</label>
+        <div class="time-inputs">
+          <input type="number" id="studyMin" placeholder="Minutes" min="0" value="0">
+          <input type="number" id="studySec" placeholder="Seconds" min="0" max="59" value="10">
+        </div>
+      </div>
+      <div class="time-row">
+        <label>☕ Break Block:</label>
+        <div class="time-inputs">
+          <input type="number" id="breakMin" placeholder="Minutes" min="0" value="0">
+          <input type="number" id="breakSec" placeholder="Seconds" min="0" max="59" value="5">
+        </div>
+      </div>
+      <!-- 🚀 NEW FIELD: Set exact total targets for your study rounds -->
+      <div class="time-row">
+        <label>🔄 Total Rounds:</label>
+        <div class="time-inputs">
+          <input type="number" id="roundsInput" placeholder="Total Loops (e.g. 4)" min="1" value="2">
+        </div>
+      </div>
+    </div>
+    
     <button id="startBtn">Initiate Lockdown</button>
   </div>
+  
   <div id="lockdown">
     <div id="timerBar" style="position: relative;">
-  <span>LOCKDOWN ACTIVE: <span id="timer" style="margin-left: 15px;">--:--</span> remaining</span>
-  <!-- The live battery display target -->
-  <span id="batteryStatus" style="position: absolute; right: 20px; font-size: 16px; font-weight: normal;">🔋 --%</span>
-</div>
+      <span><span id="timerPrefix">LOCKDOWN ACTIVE</span>: <span id="timer" style="margin-left: 15px;">--:--</span> remaining</span>
+      <span id="batteryStatus" style="position: absolute; right: 20px; font-size: 16px; font-weight: normal;">🔋 --%</span>
+    </div>
     <div id="tabBar"><div id="tabButtons" style="display: flex; gap: 5px;"></div><button id="newTabBtn">+</button></div>
     <div id="navBar"><button id="backBtn">← Back</button><button id="fwdBtn">Forward →</button><button id="reloadBtn">↻ Reload</button><span id="currentUrl"></span></div>
     <div id="webviewContainer"></div>
   </div>
+  
   <div id="timeUp">
     <h1>TIME IS UP!</h1>
     <p style="font-size: 2em; margin-top: 20px;">You are now free. Closing application...</p>
@@ -61,8 +90,16 @@
     const timeUpDiv = document.getElementById('timeUp');
     const startBtn = document.getElementById('startBtn');
     const urlInput = document.getElementById('urlInput');
-    const timeInput = document.getElementById('timeInput');
+    
+    const studyMin = document.getElementById('studyMin');
+    const studySec = document.getElementById('studySec');
+    const breakMin = document.getElementById('breakMin');
+    const breakSec = document.getElementById('breakSec');
+    const roundsInput = document.getElementById('roundsInput'); // Target element selector
+    
     const timerSpan = document.getElementById('timer');
+    const timerPrefix = document.getElementById('timerPrefix');
+    const timerBar = document.getElementById('timerBar');
     const tabButtonsDiv = document.getElementById('tabButtons');
     const newTabBtn = document.getElementById('newTabBtn');
     const webviewContainer = document.getElementById('webviewContainer');
@@ -72,6 +109,18 @@
     const reloadBtn = document.getElementById('reloadBtn');
 
     let allowedUrls = [];
+    let endTime = 0; let interval; let tabCounter = 0; let activeTab = null; let tabs = [];
+    
+    let currentMode = 'study';
+    let studyTotalMs = 0;
+    let breakTotalMs = 0;
+    
+    // Tracking engine counters
+    let targetRounds = 1;
+    let currentRound = 1;
+
+    const PARTITION = 'persist:ddg_auth';
+
     let lowBatteryNotified = false;
     let fullBatteryNotified = false;
 
@@ -80,49 +129,25 @@
         function updateBatteryInfo() {
           const percentage = Math.round(battery.level * 100);
           const isCharging = battery.charging;
-          
-          // 1. Update the top bar text configuration
           const statusText = isCharging ? `🔌 ${percentage}% (Charging)` : `🔋 ${percentage}%`;
-          document.getElementById('batteryStatus').innerText = statusText;
+          const targetNode = document.getElementById('batteryStatus');
+          if (targetNode) targetNode.innerText = statusText;
 
-          // 2. Low Battery Alert (Trigger at 15% or lower if unplugged)
-          if (battery.level <= 0.15 && !isCharging) {
-            if (!lowBatteryNotified) {
-              ipcRenderer.send('notify-battery', {
-                title: '🔋 Battery Running Low!',
-                body: `Your battery has dropped to ${percentage}%. Plug in your charger soon to avoid losing your study block progress.`
-              });
-              lowBatteryNotified = true;
-            }
-          } else if (battery.level > 0.20) {
-            lowBatteryNotified = false; // Reset threshold tracker when charging back up
-          }
+          if (battery.level <= 0.15 && !isCharging && !lowBatteryNotified) {
+            ipcRenderer.send('notify-battery', { title: '🔋 Battery Running Low!', body: `Battery dropped to ${percentage}%. Plug in your charger.` });
+            lowBatteryNotified = true;
+          } else if (battery.level > 0.20) { lowBatteryNotified = false; }
 
-          // 3. Full Battery Alert (Trigger right when hitting 100% on the cable)
-          if (percentage === 100 && isCharging) {
-            if (!fullBatteryNotified) {
-              ipcRenderer.send('notify-battery', {
-                title: '🔌 Battery Fully Charged!',
-                body: 'Your battery is at 100%. You can safely unplug your charger now.'
-              });
-              fullBatteryNotified = true;
-            }
-          } else if (percentage < 100) {
-            fullBatteryNotified = false; // Reset tracker when unplugged or draining
-          }
+          if (percentage === 100 && isCharging && !fullBatteryNotified) {
+            ipcRenderer.send('notify-battery', { title: '🔌 Battery Fully Charged!', body: 'Battery is at 100%. Unplug whenever you want.' });
+            fullBatteryNotified = true;
+          } else if (percentage < 100) { fullBatteryNotified = false; }
         }
-
-        // Initialize status displays immediately on boot
         updateBatteryInfo();
-
-        // Listen for live power hardware updates asynchronously 
         battery.addEventListener('levelchange', updateBatteryInfo);
         battery.addEventListener('chargingchange', updateBatteryInfo);
       });
     }
-    let endTime = 0; let interval; let tabCounter = 0; let activeTab = null; let tabs = [];
-
-    const PARTITION = 'persist:ddg_auth';
 
     ipcRenderer.on('google-login-closed', () => { if (activeTab && activeTab.webview) activeTab.webview.reload(); });
 
@@ -140,10 +165,26 @@
 
     startBtn.addEventListener('click', () => {
       let rawUrls = urlInput.value.split(',').map(u => u.trim()).filter(u => u !== '');
-      const minutes = parseInt(timeInput.value);
-      if (rawUrls.length === 0 || isNaN(minutes) || minutes < 1) { alert("You must provide valid URLs and at least 1 minute."); return; }
+      
+      let sMin = parseInt(studyMin.value) || 0;
+      let sSec = parseInt(studySec.value) || 0;
+      let bMin = parseInt(breakMin.value) || 0;
+      let bSec = parseInt(breakSec.value) || 0;
+
+      studyTotalMs = ((sMin * 60) + sSec) * 1000;
+      breakTotalMs = ((bMin * 60) + bSec) * 1000;
+      targetRounds = parseInt(roundsInput.value) || 1;
+      
+      if (rawUrls.length === 0 || studyTotalMs <= 0) { 
+        alert("You must provide valid URLs and a study block longer than 0 seconds."); 
+        return; 
+      }
+      
       allowedUrls = rawUrls.map(formatUrl);
-      endTime = Date.now() + (minutes * 60 * 1000);
+      currentMode = 'study';
+      currentRound = 1; // Reset round position tracking indicators
+      endTime = Date.now() + studyTotalMs;
+      
       ipcRenderer.send('lock-window');
       setupDiv.style.display = 'none'; lockdownDiv.style.display = 'flex';
       createTab(allowedUrls[0]);
@@ -169,10 +210,7 @@
       const webview = document.createElement('webview');
       webview.className = 'browser-view';
       webview.allowpopups = true;
-      
-      // 🚀 ADD THIS LINE: Allows Chromium to scale videos inside the container cleanly
-      webview.allowfullscreen = true; 
-      
+      webview.allowfullscreen = true;
       webview.setAttribute('partition', PARTITION);
       webview.setAttribute('webpreferences', 'nodeIntegration=no, contextIsolation=yes, webSecurity=true');
       webview.setAttribute('preload', normalizedPreloadPath);
@@ -224,12 +262,44 @@
 
     function updateTimer() {
       const remaining = endTime - Date.now();
+      
       if (remaining <= 0) {
-        clearInterval(interval); timerSpan.innerText = "00:00";
-        lockdownDiv.style.display = 'none'; timeUpDiv.style.display = 'flex';
-        ipcRenderer.send('unlock-window'); setTimeout(() => window.close(), 4000); return;
+        if (currentMode === 'study') {
+          // 🚀 CHECK ROUND LIMITATION: If we hit our round target during study, end the session immediately
+          if (currentRound >= targetRounds) {
+            clearInterval(interval); timerSpan.innerText = "00:00";
+            lockdownDiv.style.display = 'none'; timeUpDiv.style.display = 'flex';
+            ipcRenderer.send('unlock-window'); setTimeout(() => window.close(), 4000);
+            return;
+          }
+          
+          if (breakTotalMs > 0) {
+            currentMode = 'break';
+            endTime = Date.now() + breakTotalMs;
+            timerBar.style.background = '#a6e3a1'; 
+            ipcRenderer.send('start-break');
+          } else {
+            // Drop back fallback if breaks are left empty but target round limits are still higher
+            currentRound++;
+            endTime = Date.now() + studyTotalMs;
+          }
+        } else if (currentMode === 'break') {
+          // 🚀 ADVANCE ROUND INDEX: Step up to the next round as break state collapses
+          currentRound++;
+          currentMode = 'study';
+          endTime = Date.now() + studyTotalMs;
+          timerBar.style.background = '#f38ba8'; 
+          ipcRenderer.send('lock-window');
+        }
+        return;
       }
-      const mins = Math.floor(remaining / 60000); const secs = Math.floor((remaining % 60000) / 1000);
+      
+      const totalSecs = Math.ceil(remaining / 1000);
+      const mins = Math.floor(totalSecs / 60); 
+      const secs = totalSecs % 60;
+      
+      // Update top bar title text string to display active current round tracking index natively
+      timerPrefix.innerText = currentMode === 'study' ? `LOCKDOWN ACTIVE (Round ${currentRound}/${targetRounds})` : `BREAK ACTIVE (Round ${currentRound}/${targetRounds})`;
       timerSpan.innerText = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     }
 
@@ -254,9 +324,6 @@
     function attachListeners(tabObj) {
       const webview = tabObj.webview;
       webview.addEventListener('permissionrequest', (e) => { if (e.permission === 'popups') e.request.allow(); });
-      webview.addEventListener('dom-ready', () => {
-        // Let the websites naturally render their own settings, dialogs, and menus
-      });
 
       webview.addEventListener('will-navigate', (e) => {
         if (tabObj.isEnforcing) return;
